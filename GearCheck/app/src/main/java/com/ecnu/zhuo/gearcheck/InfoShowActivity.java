@@ -241,16 +241,15 @@ public class InfoShowActivity extends AppCompatActivity {
                     if (bytes > 0){
                         System.arraycopy(buffer, 0, buf, bufLen, bytes);
                         bufLen += bytes;
-//                        System.out.println(""+bufLen+buf.length);
-//                        System.out.println(new String(buf, bufLen-1,1));
                         String end = new String(buf, bufLen-1,1);
-                        System.out.println(end);
                         if(end.equals("n")){
-                            System.out.println(new String(buf,0,bufLen));
+                            String params_str = new String(buf,0,bufLen);
                             Intent intent = new Intent();
+                            intent.putExtra("params",params_str);
                             intent.setAction(Constant.ACTION_INFO_UPDATE);
                             Context context = getApplicationContext();
                             context.sendBroadcast(intent);
+                            bufLen = 0;
                         }
 
                     }
@@ -282,7 +281,11 @@ public class InfoShowActivity extends AppCompatActivity {
         public void onReceive(Context context, Intent intent) {
 
             if (intent.getAction().equals(Constant.ACTION_INFO_UPDATE)) {
-                Info.setText("ni hao");
+                String params_str = intent.getStringExtra("params");
+//                String num1 = params_str.substring(0,params_str.indexOf("a"));
+//                String num2 = params_str.substring(params_str.indexOf("a")+1,params_str.indexOf("b"));
+//                String num3 = params_str.substring(params_str.indexOf("b")+1,params_str.length()-1);
+                Info.setText(params_str);
             }
 
         }
