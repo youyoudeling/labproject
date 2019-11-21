@@ -8,6 +8,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.icu.text.IDNA;
 import android.os.Build;
 import android.util.Log;
 import android.widget.Toast;
@@ -73,9 +74,10 @@ public class BluetoothReceiver extends BroadcastReceiver{
                     //3.调用setPin方法进行配对...
                     boolean ret = ClsUtils.setPin(btDevice.getClass(), btDevice, pin);
                     if(ret){
-                        Intent i=new Intent(context,SplashActivity.class);
-                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        context.startActivity(i);
+                        Intent intent_toinfoshow=new Intent(context, InfoShowActivity.class);
+                        intent_toinfoshow.putExtra("BLE_MAC",Constant.BL_MAC);
+                        // i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        context.startActivity(intent_toinfoshow);
                     }
                 } catch (Exception e) {
                     // TODO Auto-generated catch block

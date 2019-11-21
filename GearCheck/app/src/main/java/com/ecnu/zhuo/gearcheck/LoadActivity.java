@@ -2,11 +2,9 @@ package com.ecnu.zhuo.gearcheck;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
@@ -31,35 +29,33 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.RequiresApi;
+import androidx.viewpager.widget.ViewPager;
+
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Locale;
-
-import androidx.annotation.RequiresApi;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.viewpager.widget.ViewPager;
+import java.util.Set;
 
 
 public class LoadActivity extends BaseNfcActivity {
-    String mTagText="null";
-    private ViewPager viewPager;
     private static final String TAG = "MainActivity";
-    /**写入内容的文本框*/
-    private EditText mEditText;
-    /**显示NFC卡中的内容*/
-    private TextView mTextView;
-
-    /**NFC相关*/
-    /**NFC适配器*/
-    private NfcAdapter mNfcAdapter;
-    /**延时意图*/
-    private PendingIntent mPendingIntent;
-    /**检测的卡类型*/
+    /**
+     * 蓝牙的变量
+     **/
+    private static final int ACCESS_LOCATION = 11;
+    /**
+     * 检测的卡类型
+     */
     private static String[][] sTechArr = null;
-    /**意图过滤器*/
+    /**
+     * 意图过滤器
+     */
     private static IntentFilter[] sFilters = null;
+
     static {
         try {
             sTechArr = new String[][]{
@@ -77,19 +73,81 @@ public class LoadActivity extends BaseNfcActivity {
         }
     }
 
-    /**蓝牙的变量**/
-    private static final int ACCESS_LOCATION =11 ;
-    /** Called when the activity is first created. */
-    private Button autopairbtn=null;
+    String mTagText = "null";
+
+    /**NFC相关*/
+    private ViewPager viewPager;
+    /**
+     * 已配对设备
+     */
+    private Set<BluetoothDevice> pairedDevices;
+    /**
+     * 写入内容的文本框
+     */
+    private EditText mEditText;
+    /**
+     * 显示NFC卡中的内容
+     */
+    private TextView mTextView;
+    /**
+     * NFC适配器
+     */
+    private NfcAdapter mNfcAdapter;
+    /**
+     * 延时意图
+     */
+    private PendingIntent mPendingIntent;
+    /**
+     * Called when the activity is first created.
+     */
+    private Button autopairbtn = null;
     private BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
+    /**
+     * 解析NDEF文本数据，从第三个字节开始，后面的文本数据
+     *
+     * @param ndefRecord
+     * @return
+     */
+    public static String parseTextRecord(NdefRecord ndefRecord) {
+        /**
+         * 判断数据是否为NDEF格式
+         */
+        //判断TNF
+        if (ndefRecord.getTnf() != NdefRecord.TNF_WELL_KNOWN) {
+            return null;
+        }
+        //判断可变的长度的类型
+        if (!Arrays.equals(ndefRecord.getType(), NdefRecord.RTD_TEXT)) {
+            return null;
+        }
+        try {
+            //获得字节数组，然后进行分析
+            byte[] payload = ndefRecord.getPayload();
+            //下面开始NDEF文本数据第一个字节，状态字节
+            //判断文本是基于UTF-8还是UTF-16的，取第一个字节"位与"上16进制的80，16进制的80也就是最高位是1，
+            //其他位都是0，所以进行"位与"运算后就会保留最高位
+            String textEncoding = ((payload[0] & 0x80) == 0) ? "UTF-8" : "UTF-16";
+            //3f最高两位是0，第六位是1，所以进行"位与"运算后获得第六位
+            int languageCodeLength = payload[0] & 0x3f;
+            //下面开始NDEF文本数据第二个字节，语言编码
+            //获得语言编码
+            String languageCode = new String(payload, 1, languageCodeLength, StandardCharsets.US_ASCII);
+            //下面开始NDEF文本数据后面的字节，解析出文本
+            String textRecord = new String(payload, languageCodeLength + 1,
+                    payload.length - languageCodeLength - 1, textEncoding);
+            return textRecord;
+        } catch (Exception e) {
+            throw new IllegalArgumentException();
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         getPermission();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_load);
-        Log.d("tishi on create","in create");
+        Log.d("tishi on create", "in create");
         initView();
         initNfc();
         // 判断当前手机是否支持NFC
@@ -99,63 +157,55 @@ public class LoadActivity extends BaseNfcActivity {
             return;
         }
         //PendingIntent intent=PendingIntent.getActivity(this, 0, new Intent(this,getClass()), 0);
-        Log.d("tishi on create","ready to in resolveIntent");
+        Log.d("tishi on create", "ready to in resolveIntent");
         resolveIntent(getIntent());
         // Toast.makeText(this, String.valueOf(intent), Toast.LENGTH_SHORT).show();
-        Log.d("tishi on create",mTagText);
-       if(mTagText!=null){
-           String str = mTagText;
-           if(mTagText.length()>=3){
-               String str1=str.substring(0,3);
-               Log.d("tishi str1",str1);
-               if(str.contains("#")){
-                   String btname=str.substring(3,str.indexOf("#"));
-                   Log.d("tishi btname",btname);
-                   String pin=str.substring(str.indexOf("#")+1,str.length());
-                   Log.d("tishi pin",pin);
-                   BluetoothReceiver mybluetoothreceiver =new BluetoothReceiver();//这里明天来加参数
-                   if (!bluetoothAdapter.isEnabled())
-                   {
-                       bluetoothAdapter.enable();//异步的，不会等待结果，直接返回。
-                       Toast.makeText(LoadActivity.this,"请打开蓝牙再试一次",Toast.LENGTH_SHORT).show();
-                   }else{
-                       String name = bluetoothAdapter.getName();
-//获取本机蓝牙地址
-                       @SuppressLint("HardwareIds") String address = bluetoothAdapter.getAddress();
-                       Log.d("tishi","bluetooth name ="+name+" address ="+address);
-                       IntentFilter filter = new IntentFilter();
-//发现设备
-                       filter.addAction(BluetoothDevice.ACTION_FOUND);
-//设备连接状态改变
-                       filter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
-//蓝牙设备状态改变
-                       filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+        Log.d("tishi on create", mTagText);
+        if (mTagText != null) {
+            String str = mTagText;
+            if (mTagText.length() >= 3) {
+                String str1 = str.substring(0, 3);
+                Log.d("tishi str1", str1);
+                if (str.contains("#")) {
+                    String btname = str.substring(3, str.indexOf("#"));
+                    Log.d("tishi btname", btname);
+                    String pin = str.substring(str.indexOf("#") + 1);
+                    Log.d("tishi pin", pin);
+                    BluetoothReceiver mybluetoothreceiver = new BluetoothReceiver();//这里明天来加参数
+                    if (!bluetoothAdapter.isEnabled()) {
+                        bluetoothAdapter.enable();//异步的，不会等待结果，直接返回。
+                        Toast.makeText(LoadActivity.this, "请打开蓝牙再试一次", Toast.LENGTH_SHORT).show();
+                    } else if (pairedDevices()){
+                        Intent intent_loadtoinfoshow = new Intent(LoadActivity.this, InfoShowActivity.class);
+                        intent_loadtoinfoshow.putExtra("BLE_MAC",Constant.BL_MAC);
+                        startActivity(intent_loadtoinfoshow);
+                    } else{
+                        String name = bluetoothAdapter.getName();//获取本机蓝牙地址
+                        @SuppressLint("HardwareIds") String address = bluetoothAdapter.getAddress();
+                        Log.d("tishi", "bluetooth name =" + name + " address =" + address);
+                        IntentFilter filter = new IntentFilter();//发现设备
+                        filter.addAction(BluetoothDevice.ACTION_FOUND);//设备连接状态改变
+                        filter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);//蓝牙设备状态改变
+                        filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+                        filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+                        registerReceiver(mybluetoothreceiver, filter);
+                        if (bluetoothAdapter.isEnabled()) {
+                            if (bluetoothAdapter.getScanMode() != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
+                                Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+                                discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 3600);
+                                startActivity(discoverableIntent);
+                            }
+                        }
+                        bluetoothAdapter.startDiscovery();
+                        Log.e("tishi", "配对成功");
+                    }
+                }
+                Log.d("tishi", "跳转");
+            }
 
-                       filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
-                       registerReceiver(mybluetoothreceiver, filter);
-                       if (bluetoothAdapter.isEnabled()) {
-                           if (bluetoothAdapter.getScanMode() !=
-                                   BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
-                               Intent discoverableIntent = new Intent(
-                                       BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
-                               discoverableIntent.putExtra(
-                                       BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 3600);
-                               startActivity(discoverableIntent);
-                           }
-                       }
-                       bluetoothAdapter.startDiscovery();
-                       Log.e("tishi","配对成功");
-                   }
-
-               }
-               Log.d("tishi","跳转");
-           }
-
-       }
-
-        mTextView.setText(mTagText+"??");
+        }
+        mTextView.setText(mTagText + "??");
         // startActivity(intent);
-
     }
 
     /**
@@ -206,6 +256,7 @@ public class LoadActivity extends BaseNfcActivity {
 
     /**
      * 读取数据
+     *
      * @param tag Tag
      */
     private void readData(Tag tag) {
@@ -239,6 +290,7 @@ public class LoadActivity extends BaseNfcActivity {
 
     /**
      * 解析NdefRecord数据
+     *
      * @param ndefRecord NdefRecord记录
      */
     private String parseNdefRecord(NdefRecord ndefRecord) {
@@ -258,9 +310,9 @@ public class LoadActivity extends BaseNfcActivity {
             // 获得语言编码长度
             int languageCodeLength = payload[0] & 0x3f;
             // 语言编码
-            String languageCode = new String(payload, 1, languageCodeLength, "US-ASCII");
+            String languageCode = new String(payload, 1, languageCodeLength, StandardCharsets.US_ASCII);
             // 获取文本
-            return new String(payload, languageCodeLength + 1, payload.length - languageCodeLength -1, textEncoding);
+            return new String(payload, languageCodeLength + 1, payload.length - languageCodeLength - 1, textEncoding);
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         }
@@ -269,6 +321,7 @@ public class LoadActivity extends BaseNfcActivity {
 
     /**
      * 写数据
+     *
      * @param tag Tag
      */
     //这段可能要删除
@@ -287,8 +340,9 @@ public class LoadActivity extends BaseNfcActivity {
 
     /**
      * 将NdefMessage消息写入Tag
+     *
      * @param ndefMessage Ndef消息
-     * @param tag Tag
+     * @param tag         Tag
      */
     private boolean writeTag(NdefMessage ndefMessage, Tag tag) {
         try {
@@ -307,6 +361,7 @@ public class LoadActivity extends BaseNfcActivity {
 
     /**
      * 创建文本信息
+     *
      * @param text 要写入的文本信息
      */
     private NdefRecord createTextRecord(String text) {
@@ -318,7 +373,7 @@ public class LoadActivity extends BaseNfcActivity {
         byte[] textBytes = text.getBytes(utfEncoding);
         int utfBit = 0;
         // 将语言长度转化对应的字符
-        char status = (char)(utfBit + langBytes.length);
+        char status = (char) (utfBit + langBytes.length);
         // 创建一个大小为 1(即语言长度转化对应的字符) + 语言字节长度 + 文本字节长度的字节数组
         byte[] data = new byte[1 + langBytes.length + textBytes.length];
         // 写入第一位数据
@@ -335,18 +390,17 @@ public class LoadActivity extends BaseNfcActivity {
      * 初始化布局
      */
     private void initView() {
-        mEditText = (EditText) this.findViewById(R.id.editText);
-        mTextView = (TextView) this.findViewById(R.id.textView);
+        mEditText = this.findViewById(R.id.editText);
+        mTextView = this.findViewById(R.id.textView);
     }
 
-
-    private void resolveIntent(final Intent intent){
+    private void resolveIntent(final Intent intent) {
         Log.i("touchez", "resolve intent");
 
-        String action=intent.getAction();
-        if(NfcAdapter.ACTION_TAG_DISCOVERED.equals(action)
+        String action = intent.getAction();
+        if (NfcAdapter.ACTION_TAG_DISCOVERED.equals(action)
                 || NfcAdapter.ACTION_TECH_DISCOVERED.equals(action)
-                || NfcAdapter.ACTION_NDEF_DISCOVERED.equals(action)){
+                || NfcAdapter.ACTION_NDEF_DISCOVERED.equals(action)) {
 
             //1.获取Tag对象
             Tag detectedTag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
@@ -354,14 +408,12 @@ public class LoadActivity extends BaseNfcActivity {
             Ndef ndef = Ndef.get(detectedTag);
             //mTagText = ndef.getType() + "\nmaxsize:" + ndef.getMaxSize() + "bytes\n\n";
             readNfcTag(intent);
-            if(mTagText!=null)
-                Log.d("mTagText",mTagText);
-            else
-            {
-                mTagText="This is a null tag!!!";
-                Log.d("mTagText","msg is null");
+            if (mTagText != null)
+                Log.d("mTagText", mTagText);
+            else {
+                mTagText = "This is a null tag!!!";
+                Log.d("mTagText", "msg is null");
             }
-
 
 
         }
@@ -377,7 +429,7 @@ public class LoadActivity extends BaseNfcActivity {
         if (NfcAdapter.ACTION_NDEF_DISCOVERED.equals(intent.getAction())) {
             Parcelable[] rawMsgs = intent.getParcelableArrayExtra(
                     NfcAdapter.EXTRA_NDEF_MESSAGES);
-            NdefMessage msgs[] = null;
+            NdefMessage[] msgs = null;
             int contentSize = 0;
             if (rawMsgs != null) {
                 msgs = new NdefMessage[rawMsgs.length];
@@ -390,64 +442,16 @@ public class LoadActivity extends BaseNfcActivity {
                 if (msgs != null) {
                     NdefRecord record = msgs[0].getRecords()[0];
                     String textRecord = parseTextRecord(record);
-                    mTagText = textRecord ;
+                    mTagText = textRecord;
                 }
             } catch (Exception e) {
             }
         }
     }
+
     /**
-     * 解析NDEF文本数据，从第三个字节开始，后面的文本数据
-     *
-     * @param ndefRecord
-     * @return
-     */
-    public static String parseTextRecord(NdefRecord ndefRecord) {
-        /**
-         * 判断数据是否为NDEF格式
-         */
-        //判断TNF
-        if (ndefRecord.getTnf() != NdefRecord.TNF_WELL_KNOWN) {
-            return null;
-        }
-        //判断可变的长度的类型
-        if (!Arrays.equals(ndefRecord.getType(), NdefRecord.RTD_TEXT)) {
-            return null;
-        }
-        try {
-            //获得字节数组，然后进行分析
-            byte[] payload = ndefRecord.getPayload();
-            //下面开始NDEF文本数据第一个字节，状态字节
-            //判断文本是基于UTF-8还是UTF-16的，取第一个字节"位与"上16进制的80，16进制的80也就是最高位是1，
-            //其他位都是0，所以进行"位与"运算后就会保留最高位
-            String textEncoding = ((payload[0] & 0x80) == 0) ? "UTF-8" : "UTF-16";
-            //3f最高两位是0，第六位是1，所以进行"位与"运算后获得第六位
-            int languageCodeLength = payload[0] & 0x3f;
-            //下面开始NDEF文本数据第二个字节，语言编码
-            //获得语言编码
-            String languageCode = new String(payload, 1, languageCodeLength, "US-ASCII");
-            //下面开始NDEF文本数据后面的字节，解析出文本
-            String textRecord = new String(payload, languageCodeLength + 1,
-                    payload.length - languageCodeLength - 1, textEncoding);
-            return textRecord;
-        } catch (Exception e) {
-            throw new IllegalArgumentException();
-        }
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-    /**蓝牙的函数**/
+     * 蓝牙的函数
+     **/
     @SuppressLint("WrongConstant")
     private void getPermission() {
         if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M) {
@@ -487,6 +491,19 @@ public class LoadActivity extends BaseNfcActivity {
         return true;
     }
 
+    private boolean pairedDevices() {
+        boolean existPaired = false;
+        pairedDevices = bluetoothAdapter.getBondedDevices();
+        if (pairedDevices.size() > 0) {
+            for (BluetoothDevice bt : pairedDevices) {
+                if (bt.getAddress().equals("98:D3:31:FB:07:78")) {
+                    existPaired = true;
+                    return existPaired;
+                }
+            }
+        }
+        return existPaired;
+    }
 
 
 }

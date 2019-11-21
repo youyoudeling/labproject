@@ -10,6 +10,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -21,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.UUID;
 
 
@@ -40,17 +42,15 @@ public class InfoShowActivity extends AppCompatActivity {
     static final UUID myUUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     private InputStream inStream = null;
-
+    private OutputStream outStream = null;
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
         super.onCreate(savedInstanceState);
-
         registerBroadcastReceiver();
-
         Intent newint = getIntent();
-        address = newint.getStringExtra(DeviceListActivity.EXTRA_ADDRESS); //receive the address of the bluetooth device
-
+        address = newint.getStringExtra("BLE_MAC"); //receive the address of the bluetooth device
+        Log.i("address",address);
         //view of the ledControl
         setContentView(R.layout.activity_info_show);
 
@@ -125,11 +125,12 @@ public class InfoShowActivity extends AppCompatActivity {
 
     private void turnOnLed()
     {
+        Log.i("click","click");
         if (btSocket!=null)
         {
             try
             {
-                btSocket.getOutputStream().write("1".toString().getBytes());
+                btSocket.getOutputStream().write("1".getBytes());
             }
             catch (IOException e)
             {
@@ -217,12 +218,21 @@ public class InfoShowActivity extends AppCompatActivity {
                 try
                 {
                     inStream = btSocket.getInputStream();
+                    outStream = btSocket.getOutputStream();
                 }
                 catch (IOException e)
                 {
                     msg("Error");
                 }
                 new InfoThread().start();
+                try
+                {
+                    outStream.write("1".getBytes());
+                }
+                catch (IOException e)
+                {
+                    msg("Error");
+                }
             }
             progress.dismiss();
         }
@@ -230,6 +240,7 @@ public class InfoShowActivity extends AppCompatActivity {
     private class InfoThread extends Thread{
         @Override
         public void run() {
+            Log.i("run","run");
             super.run();
             byte buffer[] = new byte[1024];
             byte[] buf = new byte[1024];
@@ -242,6 +253,7 @@ public class InfoShowActivity extends AppCompatActivity {
                         System.arraycopy(buffer, 0, buf, bufLen, bytes);
                         bufLen += bytes;
                         String end = new String(buf, bufLen-1,1);
+                        Log.e("end",end);
                         if(end.equals("n")){
                             String params_str = new String(buf,0,bufLen);
                             Intent intent = new Intent();
@@ -279,13 +291,15 @@ public class InfoShowActivity extends AppCompatActivity {
     private class MyBroadcastReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
-
             if (intent.getAction().equals(Constant.ACTION_INFO_UPDATE)) {
                 String params_str = intent.getStringExtra("params");
-//                String num1 = params_str.substring(0,params_str.indexOf("a"));
-//                String num2 = params_str.substring(params_str.indexOf("a")+1,params_str.indexOf("b"));
-//                String num3 = params_str.substring(params_str.indexOf("b")+1,params_str.length()-1);
-                Info.setText(params_str);
+                String num1 = params_str.substring(0,params_str.indexOf("a"));
+                String num2 = params_str.substring(params_str.indexOf("a")+1,params_str.indexOf("b"));
+                String num3 = params_str.substring(params_str.indexOf("b")+1,params_str.indexOf("c"));
+                String num4 = params_str.substring(params_str.indexOf("c")+1,params_str.indexOf("d"));
+                String num5 = params_str.substring(params_str.indexOf("d")+1,params_str.indexOf("e"));
+                String num6 = params_str.substring(params_str.indexOf("e")+1,params_str.indexOf("n"));
+                Info.setText(num1+num2+num3+num4+num5+num6);
             }
 
         }
